@@ -9,7 +9,7 @@
   "compatibility_date": "2025-01-09",
   "observability": {
     "enabled": true
-  }
+  },
   /**
    * Smart Placement
    * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
@@ -22,6 +22,13 @@
    * databases, object storage, AI inference, real-time communication and more.
    * https://developers.cloudflare.com/workers/runtime-apis/bindings/
    */
+  "kv_namespaces": [
+    {
+      "binding": "LATEST_SCORE",
+      "id": "e857cb30fa5b40d3b3756f138a94b221"
+    }
+  ]
+
 
   /**
    * Environment Variables

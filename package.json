@@ -5,6 +5,7 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
+    "dev-scheduled": "wrangler dev --test-scheduled",
     "start": "wrangler dev",
     "test": "vitest",
     "cf-typegen": "wrangler types"
@@ -15,5 +16,8 @@
     "typescript": "^5.5.2",
     "vitest": "2.1.8",
     "wrangler": "^3.103.1"
+  },
+  "dependencies": {
+    "osu-web.js": "^2.5.0"
   }
 }
