@@ -172,8 +172,10 @@ export default {
 
     if (recent_scores.length > 0) {
       const latest_score = recent_scores[0]
-      console.log(`updating last_seen_score to ${latest_score.beatmapset.title}, created_at=${latest_score.created_at}`);
-      await env.LATEST_SCORE.put('last_seen', JSON.stringify(score_from_api(latest_score)));
+      if (latest_score.created_at != last_seen_score?.created_at) {
+        console.log(`updating last_seen_score to ${latest_score.beatmapset.title}, created_at=${latest_score.created_at}`);
+        await env.LATEST_SCORE.put('last_seen', JSON.stringify(score_from_api(latest_score)));
+      }
     }
 
 		ctx.waitUntil((async () => {
