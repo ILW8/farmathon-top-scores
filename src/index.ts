@@ -152,12 +152,12 @@ export default {
     let new_scores: UserScore[] = [];
 
 		for (let reverse_index = recent_scores.length - 1; reverse_index >= 0; reverse_index--) {
-      console.log(`[${reverse_index.toString().padStart(2)}]: ${recent_scores[reverse_index].created_at} ${recent_scores[reverse_index].beatmapset.title}`);
+      // console.log(`[${reverse_index.toString().padStart(2)}]: ${recent_scores[reverse_index].created_at} ${recent_scores[reverse_index].beatmapset.title}`);
 
       if (recent_scores[reverse_index].created_at == last_seen_score?.created_at) {
         // clear new_scores
         new_scores = [];
-        console.warn(`vvvv start counting from here vvvv`);
+        // console.warn(`vvvv start counting from here vvvv`);
         continue;
       }
 
