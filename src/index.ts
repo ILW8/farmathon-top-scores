@@ -108,7 +108,6 @@ export default {
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     const osu_v2_token = await get_osu_v2_token(env);
     if (osu_v2_token == null) {
-      console.error('Failed to get osu v2 token');
       return;
     }
 
