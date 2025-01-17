@@ -135,7 +135,7 @@ export default {
     }
     const recent_scores = (await r.json()) as UserScore[];
 
-    r = await fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/best?legacy_only=1&mode=osu&limit=50', options);
+    r = await fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/best?legacy_only=1&mode=osu&limit=100', options);
     if (!r.ok) {
       console.error(`Failed to fetch best scores: ${r.status} ${await r.text()}`);
       return;
@@ -143,7 +143,15 @@ export default {
     const best_scores = (await r.json()) as UserBestScore[];
 
 
-    const worst_best_score = best_scores[best_scores.length - 1];
+    // const top_100_pp = best_scores.reduce((min, score) => {
+    //   return score.pp < min ? score.pp : min;
+    // }, Infinity);
+
+    const top_100_pp_values = best_scores.map(score => score.pp);
+    top_100_pp_values.sort((a, b) => a - b).reverse();
+
+    const top_100_pp = top_100_pp_values[top_100_pp_values.length - 1];
+
     let new_scores: UserScore[] = [];
     let hex_digest: string = "";
 
@@ -151,7 +159,8 @@ export default {
       const reverse_index = recent_scores.length - score_index - 1;
 
       // filter to only include top 100 scores
-      if (recent_scores[score_index].pp < worst_best_score.pp) {
+      if (recent_scores[reverse_index].pp == null || recent_scores[reverse_index].pp < top_100_pp) {
+        // console.log(`skipping score ${reverse_index} with pp ${recent_scores[reverse_index].pp}`);
         continue;
       }
 
@@ -193,9 +202,22 @@ export default {
         const score: ScuffedScore = score_from_api(api_score);
         const score_time_set = new Date(score.created_at);
 
-        let content = `<t:${score_time_set.getTime()/1000}:f> [${score.beatmap_id}](https://osu.ppy.sh/b/${score.beatmap_id}) `;
-        content += `:regional_indicator_${score.rank.toLowerCase()}: `;
-        content += `${score.pp}pp ${score.mods.join('')}`;
+        // for (let i = 0; i < top_100_pp_values.length; i++) {
+        //   if (top_100_pp_values[i] < score.pp ) {
+        //     score_rank = i + 1;
+        //     break;
+        //   }
+        // }
+
+        let score_rank = top_100_pp_values.indexOf(score.pp) + 1;
+
+        // if score is not in top 100 (did not overwrite), then skip the score
+        if (score_rank == 0)
+          continue;
+
+        let content = `\`${('#' + score_rank.toString()).padStart(4)}\`: **${score.rank.toUpperCase()}** rank `;
+        content += `**${score.pp}**pp ${score.mods.join('')}`;
+        content += `<t:${score_time_set.getTime()/1000}:f> [${score.title} [${score.diff_name}]](https://osu.ppy.sh/b/${score.beatmap_id}) `;
 
         const options = {
           method: 'POST',
