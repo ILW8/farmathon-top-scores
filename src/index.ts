@@ -35,10 +35,6 @@ interface ScuffedScore {
   title: string;
 }
 
-interface LastSeenScore extends ScuffedScore {
-  hash: string
-}
-
 interface TokenResponse {
   token_type: string;
   expires_in: number;
@@ -112,13 +108,15 @@ export default {
     }
 
     const last_seen_score_str = await env.LATEST_SCORE.get('last_seen');
-    let last_seen_score: LastSeenScore | null = null;
+    let last_seen_score: ScuffedScore | null = null;
     try {
       if (last_seen_score_str != null)
         last_seen_score = JSON.parse(last_seen_score_str);
     } catch (e) {
       console.warn(`Failed to parse last_seen_score: ${e}, resetting to empty`);
     }
+
+    console.info(`last seen score: ${last_seen_score?.created_at} ${last_seen_score?.title}`)
 
     const options = {
       method: 'GET',
@@ -152,10 +150,16 @@ export default {
     const top_100_pp = top_100_pp_values[top_100_pp_values.length - 1];
 
     let new_scores: UserScore[] = [];
-    let hex_digest: string = "";
 
-		for (let score_index in recent_scores) {
-      const reverse_index = recent_scores.length - score_index - 1;
+		for (let reverse_index = recent_scores.length - 1; reverse_index >= 0; reverse_index--) {
+      console.log(`[${reverse_index.toString().padStart(2)}]: ${recent_scores[reverse_index].created_at} ${recent_scores[reverse_index].beatmapset.title}`);
+
+      if (recent_scores[reverse_index].created_at == last_seen_score?.created_at) {
+        // clear new_scores
+        new_scores = [];
+        console.warn(`vvvv start counting from here vvvv`);
+        continue;
+      }
 
       // filter to only include top 100 scores
       if (recent_scores[reverse_index].pp == null || recent_scores[reverse_index].pp < top_100_pp) {
@@ -163,34 +167,13 @@ export default {
         continue;
       }
 
-      // log the sha256sum  of score
-			const digest = await crypto.subtle.digest(
-        { name: 'SHA-256' },
-        new TextEncoder().encode(JSON.stringify(recent_scores[reverse_index]))
-      );
-			hex_digest = Array.from(new Uint8Array(digest))
-				.map(b => b.toString(16).padStart(2, '0'))
-				.join('');
-
-			// console.log(`${score_index}: ${hex_digest}`);
-
-      if (hex_digest == last_seen_score?.hash) {
-        // clear new_scores
-        new_scores = [];
-        continue;
-      }
-
       new_scores.push(recent_scores[reverse_index]);
 		}
 
-    // update last_seen_score using last element of new_scores
-    if (new_scores.length > 0) {
-      const latest_score = new_scores[0]
-      console.log(`updating last_seen_score to ${hex_digest}`);
-      await env.LATEST_SCORE.put('last_seen', JSON.stringify({
-        hash: hex_digest,
-        ...score_from_api(latest_score)
-      }));
+    if (recent_scores.length > 0) {
+      const latest_score = recent_scores[0]
+      console.log(`updating last_seen_score to ${latest_score.beatmapset.title}, created_at=${latest_score.created_at}`);
+      await env.LATEST_SCORE.put('last_seen', JSON.stringify(score_from_api(latest_score)));
     }
 
 		ctx.waitUntil((async () => {
@@ -200,14 +183,6 @@ export default {
 
         const score: ScuffedScore = score_from_api(api_score);
         const score_time_set = new Date(score.created_at);
-
-        // for (let i = 0; i < top_100_pp_values.length; i++) {
-        //   if (top_100_pp_values[i] < score.pp ) {
-        //     score_rank = i + 1;
-        //     break;
-        //   }
-        // }
-
         let score_rank = top_100_pp_values.indexOf(score.pp) + 1;
 
         // if score is not in top 100 (did not overwrite), then skip the score
