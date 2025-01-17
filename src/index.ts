@@ -23,15 +23,22 @@ interface Env {
 }
 
 interface Score {
-  beatmap_id: string,
-  score: string,
-  mods: string,
-  date: string,
+  score: number,
+  mods: string[],
+  created_at: string,
   rank: string,
-  score_id: string | null
+  id: number;
+  pp: number;
+  type: string;
+  beatmap_id: number;
+  beatmapset_id: number;
+  diff_name: string;
+  artist: string;
+  set_mapper: string;
+  title: string;
 }
 
-interface LastSeen extends Score {
+interface LastSeenScore extends Score {
   hash: string
 }
 
@@ -80,14 +87,36 @@ async function get_osu_v2_token(env: Env, renew: boolean = false) {
   return token_resp.access_token;
 }
 
+function score_from_api(api_score): Score {
+  return {
+    score: api_score.score,
+    mods: api_score.mods,
+    created_at: api_score.created_at,
+    rank: api_score.rank,
+    id: api_score.id,
+    pp: api_score.pp,
+    type: api_score.type,
+    beatmap_id: api_score.beatmap.id,
+    beatmapset_id: api_score.beatmap.beatmapset_id,
+    diff_name: api_score.beatmap.version,
+    artist: api_score.beatmapset.artist,
+    set_mapper: api_score.beatmapset.creator,
+    title: api_score.beatmapset.title
+  };
+}
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 export default {
 	async scheduled(event, env: Env, ctx) {
-		const osu_v1_api_key = env.OSU_API_KEY;
-		if (!osu_v1_api_key)
-			return;
+    const osu_v2_token = await get_osu_v2_token(env);
+    if (osu_v2_token == null) {
+      console.error('Failed to get osu v2 token');
+      return;
+    }
 
     const last_seen_score_str = await env.LATEST_SCORE.get('last_seen');
-    let last_seen_score: LastSeen | null = null;
+    let last_seen_score: LastSeenScore | null = null;
     try {
       if (last_seen_score_str != null)
         last_seen_score = JSON.parse(last_seen_score_str);
@@ -95,30 +124,29 @@ export default {
       console.warn(`Failed to parse last_seen_score: ${e}, resetting to empty`);
     }
 
-		const options = {
-			method: 'GET'
-		};
+    const options = {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${osu_v2_token}`
+      }
+    };
 
-		let resp = await fetch('https://osu.ppy.sh/api/get_user_recent?u=BTMC' +
-			'&type=string' +
-			`&k=${osu_v1_api_key}` +
-			'&m=0' +
-			'&limit=100', options)
-			.then(response => response.json());
+    const r = await fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/recent?legacy_only=1&mode=osu&limit=50', options);
+    if (!r.ok) {
+      console.error(`Failed to fetch recent scores: ${r.status} ${await r.text()}`);
+      return;
+    }
 
-    // const client = new Client(env.OSU_API_KEY_V2)
-    //
-    // const recent_scores = await
-
-    let new_scores: Score[] = [];
+    const resp_json = await r.json();
+    let new_scores = [];
     let hex_digest: string = "";
 
-		for (let score_index in resp) {
+		for (let score_index in resp_json) {
 			// log the sha256sum  of score
-      const reverse_index = resp.length - score_index - 1;
+      const reverse_index = resp_json.length - score_index - 1;
 			const digest = await crypto.subtle.digest(
         { name: 'SHA-256' },
-        new TextEncoder().encode(JSON.stringify(resp[reverse_index]))
+        new TextEncoder().encode(JSON.stringify(resp_json[reverse_index]))
       );
 			hex_digest = Array.from(new Uint8Array(digest))
 				.map(b => b.toString(16).padStart(2, '0'))
@@ -126,45 +154,43 @@ export default {
 
 			// console.log(`${score_index}: ${hex_digest}`);
 
-      // if (hex_digest == last_seen_score?.hash) {
-      //   // clear new_scores
-      //   new_scores = [];
-      //   continue;
-      // }
+      if (hex_digest == last_seen_score?.hash) {
+        // clear new_scores
+        new_scores = [];
+        continue;
+      }
 
-      new_scores.push(resp[reverse_index]);
+      new_scores.push(resp_json[reverse_index]);
 		}
-
-    // keep at most one element in new_scores
-    new_scores = new_scores.slice(0, 1);
 
     // update last_seen_score using last element of new_scores
     if (new_scores.length > 0) {
+      const latest_score = new_scores[0]
       console.log(`updating last_seen_score to ${hex_digest}`);
       await env.LATEST_SCORE.put('last_seen', JSON.stringify({
         hash: hex_digest,
-        beatmap_id: new_scores[0].beatmap_id,
-        score: new_scores[0].score,
-        mods: new_scores[0].mods,
-        date: new_scores[0].date,
-        rank: new_scores[0].rank,
-        score_id: new_scores[0].score_id
+        ...score_from_api(latest_score)
       }));
     }
 
 		ctx.waitUntil((async () => {
-      for (const score of new_scores) {
-        console.log(JSON.stringify(score));
+      for (const api_score of new_scores) {
+        // console.log(JSON.stringify(api_score));
+        const start_time = Date.now();
+
+        const score: Score = score_from_api(api_score);
+        const score_time_set = new Date(score.created_at);
+
+        let content = `<t:${score_time_set.getTime()/1000}:f> [${score.beatmap_id}](https://osu.ppy.sh/b/${score.beatmap_id}) `;
+        content += `:regional_indicator_${score.rank.toLowerCase()}: `;
+        content += `${score.pp}pp ${score.mods.join('')}`;
+
         const options = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ content:
-          `[${score.beatmap_id}](https://osu.ppy.sh/b/${score.beatmap_id})
-          :regional_indicator_${score.rank.toLowerCase()}:
-          `
-          })
+          body: JSON.stringify({ content: content })
         };
 
         const resp = await fetch(env.DISCORD_WEBHOOK_URL, options);
@@ -172,12 +198,17 @@ export default {
         if (!resp.ok) {
           console.error(`Failed to send webhook: ${resp.status} ${await resp.text()}`);
         }
+
+        // wait 1 second per request, adjust for `fetch` latency if applicable.
+        const elapsed_time = Date.now() - start_time;
+        const remaining_time = Math.max(1000 - elapsed_time, 0);
+
+        await delay(remaining_time);
       }
     })());
 	},
 
 	async fetch(event, env: Env, ctx) {
-		console.log(await get_osu_v2_token(env));
 		return new Response('', { status: 404 });
 	}
 };
