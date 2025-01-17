@@ -11,7 +11,7 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-import { Client } from 'osu-web.js';
+import { UserBestScore, UserScore } from 'osu-web.js';
 
 interface Env {
   OSU_API_V2_CLIENT_ID: string;
@@ -20,14 +20,13 @@ interface Env {
 	LATEST_SCORE: KVNamespace;  // handles latest score, but also caches access token for osu api v2
 }
 
-interface Score {
+interface ScuffedScore {
   score: number,
   mods: string[],
   created_at: string,
   rank: string,
   id: number;
   pp: number;
-  type: string;
   beatmap_id: number;
   beatmapset_id: number;
   diff_name: string;
@@ -36,7 +35,7 @@ interface Score {
   title: string;
 }
 
-interface LastSeenScore extends Score {
+interface LastSeenScore extends ScuffedScore {
   hash: string
 }
 
@@ -85,7 +84,7 @@ async function get_osu_v2_token(env: Env, renew: boolean = false) {
   return token_resp.access_token;
 }
 
-function score_from_api(api_score): Score {
+function score_from_api(api_score: UserScore): ScuffedScore {
   return {
     score: api_score.score,
     mods: api_score.mods,
@@ -93,7 +92,6 @@ function score_from_api(api_score): Score {
     rank: api_score.rank,
     id: api_score.id,
     pp: api_score.pp,
-    type: api_score.type,
     beatmap_id: api_score.beatmap.id,
     beatmapset_id: api_score.beatmap.beatmapset_id,
     diff_name: api_score.beatmap.version,
@@ -130,22 +128,37 @@ export default {
       }
     };
 
-    const r = await fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/recent?legacy_only=1&mode=osu&limit=50', options);
+    let r = await fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/recent?legacy_only=1&mode=osu&limit=50', options);
     if (!r.ok) {
       console.error(`Failed to fetch recent scores: ${r.status} ${await r.text()}`);
       return;
     }
+    const recent_scores = (await r.json()) as UserScore[];
 
-    const resp_json = await r.json();
-    let new_scores = [];
+    r = await fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/best?legacy_only=1&mode=osu&limit=50', options);
+    if (!r.ok) {
+      console.error(`Failed to fetch best scores: ${r.status} ${await r.text()}`);
+      return;
+    }
+    const best_scores = (await r.json()) as UserBestScore[];
+
+
+    const worst_best_score = best_scores[best_scores.length - 1];
+    let new_scores: UserScore[] = [];
     let hex_digest: string = "";
 
-		for (let score_index in resp_json) {
-			// log the sha256sum  of score
-      const reverse_index = resp_json.length - score_index - 1;
+		for (let score_index in recent_scores) {
+      const reverse_index = recent_scores.length - score_index - 1;
+
+      // filter to only include top 100 scores
+      if (recent_scores[score_index].pp < worst_best_score.pp) {
+        continue;
+      }
+
+      // log the sha256sum  of score
 			const digest = await crypto.subtle.digest(
         { name: 'SHA-256' },
-        new TextEncoder().encode(JSON.stringify(resp_json[reverse_index]))
+        new TextEncoder().encode(JSON.stringify(recent_scores[reverse_index]))
       );
 			hex_digest = Array.from(new Uint8Array(digest))
 				.map(b => b.toString(16).padStart(2, '0'))
@@ -159,7 +172,7 @@ export default {
         continue;
       }
 
-      new_scores.push(resp_json[reverse_index]);
+      new_scores.push(recent_scores[reverse_index]);
 		}
 
     // update last_seen_score using last element of new_scores
@@ -177,7 +190,7 @@ export default {
         // console.log(JSON.stringify(api_score));
         const start_time = Date.now();
 
-        const score: Score = score_from_api(api_score);
+        const score: ScuffedScore = score_from_api(api_score);
         const score_time_set = new Date(score.created_at);
 
         let content = `<t:${score_time_set.getTime()/1000}:f> [${score.beatmap_id}](https://osu.ppy.sh/b/${score.beatmap_id}) `;
@@ -207,7 +220,7 @@ export default {
     })());
 	},
 
-	async fetch(event, env: Env, ctx) {
+	async fetch() {
 		return new Response('', { status: 404 });
 	}
 };
