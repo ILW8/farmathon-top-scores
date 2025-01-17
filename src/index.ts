@@ -14,12 +14,10 @@
 import { Client } from 'osu-web.js';
 
 interface Env {
-	OSU_API_KEY: string;
   OSU_API_V2_CLIENT_ID: string;
   OSU_API_V2_CLIENT_SECRET: string;
   DISCORD_WEBHOOK_URL: string;
 	LATEST_SCORE: KVNamespace;  // handles latest score, but also caches access token for osu api v2
-	// ... other binding types
 }
 
 interface Score {
@@ -107,8 +105,9 @@ function score_from_api(api_score): Score {
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// noinspection JSUnusedGlobalSymbols
 export default {
-	async scheduled(event, env: Env, ctx) {
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     const osu_v2_token = await get_osu_v2_token(env);
     if (osu_v2_token == null) {
       console.error('Failed to get osu v2 token');
