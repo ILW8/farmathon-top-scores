@@ -84,6 +84,14 @@ interface NewScore {
   // current_user_attributes: object ??;
 }
 
+interface NewUserScore extends NewScore {
+  beatmap: BeatmapCompact & {
+    checksum: string | null;
+  };
+  beatmapset: BeatmapsetCompact;
+  user: UserCompact;
+}
+
 interface TokenResponse {
   token_type: string;
   expires_in: number;
@@ -127,14 +135,6 @@ async function get_osu_v2_token(env: Env, renew: boolean = false) {
   await env.LATEST_SCORE.put('osu_v2_token', token_resp.access_token, { expirationTtl: token_resp.expires_in });
 
   return token_resp.access_token;
-}
-
-interface NewUserScore extends NewScore {
-  beatmap: BeatmapCompact & {
-    checksum: string | null;
-  };
-  beatmapset: BeatmapsetCompact;
-  user: UserCompact;
 }
 
 function score_from_api(api_score: NewUserScore): ScuffedScore {
