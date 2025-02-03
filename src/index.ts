@@ -11,7 +11,15 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-import { UserBestScore, UserScore } from 'osu-web.js';
+import {
+  BeatmapCompact,
+  BeatmapsetCompact,
+  ISOTimestamp,
+  Rank,
+  ScoreStatistics,
+  UserBestScore,
+  UserCompact,
+} from 'osu-web.js';
 
 interface Env {
   OSU_API_V2_CLIENT_ID: string;
@@ -20,9 +28,12 @@ interface Env {
 	LATEST_SCORE: KVNamespace;  // handles latest score, but also caches access token for osu api v2
 }
 
+/**
+ * @deprecated kept solely for compat reasons
+ */
 interface ScuffedScore {
   score: number,
-  mods: string[],
+  mod_acronyms: string[],
   created_at: string,
   rank: string,
   id: number;
@@ -33,6 +44,44 @@ interface ScuffedScore {
   artist: string;
   set_mapper: string;
   title: string;
+}
+
+interface NewMod {
+  acronym: string;
+  // ??
+}
+
+interface NewScore {
+  classic_total_score: number;
+  preserve: boolean;
+  processed: boolean;
+  ranked: boolean;
+  maximum_statistics: ScoreStatistics;
+  mods: NewMod[];
+  statistics: ScoreStatistics;
+  total_score_without_mods: number;
+  beatmap_id: number;
+  best_id: number | null;
+  id: number;
+  rank: Rank;
+  type: string;
+  user_id: number;
+  accuracy: number;
+  build_id: number | null;
+  ended_at: ISOTimestamp;
+  has_replay: boolean;
+  is_perfect_combo: boolean;
+  legacy_perfect: boolean;
+  legacy_score_id: number | null;
+  legacy_total_score: number;
+  max_combo: number;
+  passed: boolean;
+  pp: number;
+  ruleset_id: number;
+  started_at: ISOTimestamp | null;
+  total_score: number;
+  replay: boolean;
+  // current_user_attributes: object ??;
 }
 
 interface TokenResponse {
@@ -80,11 +129,19 @@ async function get_osu_v2_token(env: Env, renew: boolean = false) {
   return token_resp.access_token;
 }
 
-function score_from_api(api_score: UserScore): ScuffedScore {
+interface NewUserScore extends NewScore {
+  beatmap: BeatmapCompact & {
+    checksum: string | null;
+  };
+  beatmapset: BeatmapsetCompact;
+  user: UserCompact;
+}
+
+function score_from_api(api_score: NewUserScore): ScuffedScore {
   return {
-    score: api_score.score,
-    mods: api_score.mods,
-    created_at: api_score.created_at,
+    score: api_score.classic_total_score,
+    mod_acronyms: api_score.mods.map(mod => mod.acronym),
+    created_at: api_score.ended_at,
     rank: api_score.rank,
     id: api_score.id,
     pp: api_score.pp,
@@ -121,7 +178,8 @@ export default {
     const options = {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${osu_v2_token}`
+        Authorization: `Bearer ${osu_v2_token}`,
+        'x-api-version': '20240529'
       }
     };
 
@@ -130,7 +188,7 @@ export default {
       console.error(`Failed to fetch recent scores: ${r.status} ${await r.text()}`);
       return;
     }
-    const recent_scores = (await r.json()) as UserScore[];
+    const recent_scores = (await r.json()) as NewUserScore[];
 
     r = await fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/best?legacy_only=1&mode=osu&limit=100', options);
     if (!r.ok) {
@@ -149,12 +207,12 @@ export default {
 
     const top_100_pp = top_100_pp_values[top_100_pp_values.length - 1];
 
-    let new_scores: UserScore[] = [];
+    let new_scores: NewUserScore[] = [];
 
 		for (let reverse_index = recent_scores.length - 1; reverse_index >= 0; reverse_index--) {
       // console.log(`[${reverse_index.toString().padStart(2)}]: ${recent_scores[reverse_index].created_at} ${recent_scores[reverse_index].beatmapset.title}`);
 
-      if (recent_scores[reverse_index].created_at == last_seen_score?.created_at) {
+      if (recent_scores[reverse_index].ended_at == last_seen_score?.created_at) {
         // clear new_scores
         new_scores = [];
         // console.warn(`vvvv start counting from here vvvv`);
@@ -172,8 +230,8 @@ export default {
 
     if (recent_scores.length > 0) {
       const latest_score = recent_scores[0]
-      if (latest_score.created_at != last_seen_score?.created_at) {
-        console.log(`updating last_seen_score to ${latest_score.beatmapset.title}, created_at=${latest_score.created_at}`);
+      if (latest_score.ended_at != last_seen_score?.created_at) {
+        console.log(`updating last_seen_score to ${latest_score.beatmapset.title}, created_at=${latest_score.ended_at}`);
         await env.LATEST_SCORE.put('last_seen', JSON.stringify(score_from_api(latest_score)));
       }
     }
@@ -191,9 +249,10 @@ export default {
         if (score_rank == 0)
           continue;
 
+        const modAcronyms = score.mod_acronyms.length > 0 ? `+${score.mod_acronyms.join('')}` : '';
         let content = `\`${('#' + score_rank.toString()).padStart(4)}\`: **${score.rank.toUpperCase()}** rank `;
-        content += `**${score.pp}**pp ${score.mods.join('')}`;
-        content += `<t:${score_time_set.getTime()/1000}:f> [${score.title} [${score.diff_name}]](https://osu.ppy.sh/b/${score.beatmap_id}) `;
+        content += `**${score.pp}**pp ${modAcronyms} `;
+        content += `<t:${score_time_set.getTime()/1000}:f> [${score.title} [${score.diff_name}]](https://osu.ppy.sh/b/${score.beatmap_id}) | [__**score link**__](https://osu.ppy.sh/scores/${score.id})`;
 
         const options = {
           method: 'POST',
