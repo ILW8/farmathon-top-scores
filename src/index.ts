@@ -25,6 +25,7 @@ interface Env {
   OSU_API_V2_CLIENT_ID: string;
   OSU_API_V2_CLIENT_SECRET: string;
   DISCORD_WEBHOOK_URL: string;
+  FARMATHON_TIMER_LINKSHARE: string;
 	LATEST_SCORE: KVNamespace;  // handles latest score, but also caches access token for osu api v2
 }
 
@@ -154,7 +155,15 @@ function score_from_api(api_score: NewUserScore): ScuffedScore {
   };
 }
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function formatSecondsToHMS(seconds: number) {
+  const fmt_hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
+  const fmt_mins = Math.floor(seconds % 3600 / 60).toString().padStart(2, '0');
+  const fmt_secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+
+  return `${fmt_hours}:${fmt_mins}:${fmt_secs}`;
+}
 
 // noinspection JSUnusedGlobalSymbols
 export default {
@@ -212,12 +221,12 @@ export default {
 		for (let reverse_index = recent_scores.length - 1; reverse_index >= 0; reverse_index--) {
       // console.log(`[${reverse_index.toString().padStart(2)}]: ${recent_scores[reverse_index].created_at} ${recent_scores[reverse_index].beatmapset.title}`);
 
-      if (recent_scores[reverse_index].ended_at == last_seen_score?.created_at) {
-        // clear new_scores
-        new_scores = [];
-        // console.warn(`vvvv start counting from here vvvv`);
-        continue;
-      }
+      // if (recent_scores[reverse_index].ended_at == last_seen_score?.created_at) {
+      //   // clear new_scores
+      //   new_scores = [];
+      //   // console.warn(`vvvv start counting from here vvvv`);
+      //   continue;
+      // }
 
       // filter to only include top 100 scores
       if (recent_scores[reverse_index].pp == null || recent_scores[reverse_index].pp < top_100_pp) {
@@ -236,10 +245,20 @@ export default {
       }
     }
 
+    // get current timer value
+    let timer_value = -1;
+    if (env.FARMATHON_TIMER_LINKSHARE != null) {
+      try{
+        const resp = await fetch(env.FARMATHON_TIMER_LINKSHARE);
+        timer_value = parseInt(await resp.text());
+      } catch (e) {
+        console.error(`Failed to fetch timer value: ${e}`);
+      }
+    }
+
 		ctx.waitUntil((async () => {
       for (const api_score of new_scores) {
         // console.log(JSON.stringify(api_score));
-        const start_time = Date.now();
 
         const score: ScuffedScore = score_from_api(api_score);
         const score_time_set = new Date(score.created_at);
@@ -252,7 +271,65 @@ export default {
         const modAcronyms = score.mod_acronyms.length > 0 ? `+${score.mod_acronyms.join('')}` : '';
         let content = `\`${('#' + score_rank.toString()).padStart(4)}\`: **${score.rank.toUpperCase()}** rank `;
         content += `**${score.pp}**pp ${modAcronyms} `;
-        content += `<t:${score_time_set.getTime()/1000}:f> [${score.title} [${score.diff_name}]](https://osu.ppy.sh/b/${score.beatmap_id}) | [__**score link**__](https://osu.ppy.sh/scores/${score.id})`;
+        content += `<t:${score_time_set.getTime()/1000}:f> [${score.title} [${score.diff_name}]](https://osu.ppy.sh/b/${score.beatmap_id})`;
+        content += ` | [__**Score link**__](https://osu.ppy.sh/scores/${score.id})`;
+
+        // only add timer calculation if timer value was correctly fetched
+        if (timer_value != -1) {
+          /**
+           * Taken from !farmathon spreadsheet
+           * @note Only doing weeks 3 and 4 since I'm writing this on week 3 lol
+           * @description Tier 0 (index 0 in array) is rank #100-51,
+           *  Tier 1 is rank #50-26,
+           *  Tier 2 is rank #25-6,
+           *  Tier 3 is rank #5-2,
+           *  Tier 4 is rank #1
+           */
+          const timer_reduction_pcts = {
+            3: [15, 20, 35, 90, 99],
+            4: [20, 25, 40, 95, 100]
+          };
+          const reduced_timer_values: {number: number} = {};
+          const ranges = [
+            { min: 1, max: 1, tier: 4 },
+            { min: 2, max: 5, tier: 3 },
+            { min: 6, max: 25, tier: 2 },
+            { min: 26, max: 50, tier: 1 },
+            { min: 51, max: 100, tier: 0 }
+          ];
+
+          let reduction_tier = 0;
+
+          // // hard-coding thresholds here, I don't really care
+          // if (score_rank == 1) {
+          //   reduced_timer_values[week_num] = Math.round(timer_value * (timer_reduction_pcts[4] / 100));
+          // } else if (score_rank >= 2 && score_rank <= 5) {
+          //   reduced_timer_values[week_num] = Math.round(timer_value * (timer_reduction_pcts[3] / 100));
+          // } else if (score_rank >= 6 && score_rank <= 25) {
+          //   reduced_timer_values[week_num] = Math.round(timer_value * (timer_reduction_pcts[2] / 100));
+          // } else if (score_rank >= 26 && score_rank <= 50) {
+          //   reduced_timer_values[week_num] = Math.round(timer_value * (timer_reduction_pcts[1] / 100));
+          // } else if (score_rank >= 51 && score_rank <= 100) {
+          //   reduced_timer_values[week_num] = Math.round(timer_value * (timer_reduction_pcts[0] / 100));
+          // }
+
+          for (const range of ranges) {
+            if (score_rank >= range.min && score_rank <= range.max) {
+              reduction_tier = range.tier;
+              break;
+            }
+          }
+
+          for (const week_num of Object.keys(timer_reduction_pcts)) {
+            reduced_timer_values[week_num] = Math.round(timer_value * (1 - timer_reduction_pcts[week_num][reduction_tier] / 100));
+          }
+
+          content += `\n`;
+          content += `- Timer at time of score fetch: ${formatSecondsToHMS(timer_value)}\n`;
+          for (const key of Object.keys(reduced_timer_values)) {
+            content += ` - Reduction for week **${key}**: ${formatSecondsToHMS(reduced_timer_values[key])} (${timer_reduction_pcts[key][reduction_tier]}%)\n`;
+          }
+        }
 
         const options = {
           method: 'POST',
@@ -268,11 +345,12 @@ export default {
           console.error(`Failed to send webhook: ${resp.status} ${await resp.text()}`);
         }
 
-        // wait 1 second per request, adjust for `fetch` latency if applicable.
-        const elapsed_time = Date.now() - start_time;
-        const remaining_time = Math.max(1000 - elapsed_time, 0);
-
-        await delay(remaining_time);
+        /**
+         * !! IMPORTANT !!
+         * ONLY PROCESS ONE SCORE PER SCHEDULED RUN
+         * THIS IS TO FACILITATE TIMER CALCULATIONS
+         */
+        break;
       }
     })());
 	},
