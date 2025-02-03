@@ -221,12 +221,12 @@ export default {
 		for (let reverse_index = recent_scores.length - 1; reverse_index >= 0; reverse_index--) {
       // console.log(`[${reverse_index.toString().padStart(2)}]: ${recent_scores[reverse_index].created_at} ${recent_scores[reverse_index].beatmapset.title}`);
 
-      // if (recent_scores[reverse_index].ended_at == last_seen_score?.created_at) {
-      //   // clear new_scores
-      //   new_scores = [];
-      //   // console.warn(`vvvv start counting from here vvvv`);
-      //   continue;
-      // }
+      if (recent_scores[reverse_index].ended_at == last_seen_score?.created_at) {
+        // clear new_scores
+        new_scores = [];
+        // console.warn(`vvvv start counting from here vvvv`);
+        continue;
+      }
 
       // filter to only include top 100 scores
       if (recent_scores[reverse_index].pp == null || recent_scores[reverse_index].pp < top_100_pp) {
