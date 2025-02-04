@@ -18,7 +18,7 @@ import {
   Rank,
   ScoreStatistics,
   UserBestScore,
-  UserCompact,
+  UserCompact
 } from 'osu-web.js';
 
 interface Env {
@@ -26,7 +26,7 @@ interface Env {
   OSU_API_V2_CLIENT_SECRET: string;
   DISCORD_WEBHOOK_URL: string;
   FARMATHON_TIMER_LINKSHARE: string;
-	LATEST_SCORE: KVNamespace;  // handles latest score, but also caches access token for osu api v2
+  LATEST_SCORE: KVNamespace;  // handles latest score, but also caches access token for osu api v2
 }
 
 /**
@@ -115,15 +115,15 @@ async function get_osu_v2_token(env: Env, renew: boolean = false) {
   const options = {
     method: 'POST',
     headers: {
-      "Accept": "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
+      'Accept': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded'
     },
     body: new URLSearchParams({
       client_id: env.OSU_API_V2_CLIENT_ID,
       client_secret: env.OSU_API_V2_CLIENT_SECRET,
       grant_type: 'client_credentials',
       scope: 'public'
-    }),
+    })
   };
 
   const resp = await fetch(token_url, options);
@@ -182,7 +182,7 @@ export default {
       console.warn(`Failed to parse last_seen_score: ${e}, resetting to empty`);
     }
 
-    console.info(`last seen score: ${last_seen_score?.created_at} ${last_seen_score?.title}`)
+    console.info(`last seen score: ${last_seen_score?.created_at} ${last_seen_score?.title}`);
 
     const options = {
       method: 'GET',
@@ -238,7 +238,7 @@ export default {
 
     let new_scores: NewUserScore[] = [];
 
-		for (let reverse_index = recent_scores.length - 1; reverse_index >= 0; reverse_index--) {
+    for (let reverse_index = recent_scores.length - 1; reverse_index >= 0; reverse_index--) {
       // console.log(`[${reverse_index.toString().padStart(2)}]: ${recent_scores[reverse_index].created_at} ${recent_scores[reverse_index].beatmapset.title}`);
 
       if (recent_scores[reverse_index].ended_at == last_seen_score?.created_at) {
@@ -255,17 +255,17 @@ export default {
       }
 
       new_scores.push(recent_scores[reverse_index]);
-		}
+    }
 
     if (recent_scores.length > 0) {
-      const latest_score = recent_scores[0]
+      const latest_score = recent_scores[0];
       if (latest_score.ended_at != last_seen_score?.created_at) {
         console.log(`updating last_seen_score to ${latest_score.beatmapset.title}, created_at=${latest_score.ended_at}`);
         await env.LATEST_SCORE.put('last_seen', JSON.stringify(score_from_api(latest_score)));
       }
     }
 
-		ctx.waitUntil((async () => {
+    ctx.waitUntil((async () => {
       for (const api_score of new_scores) {
         // console.log(JSON.stringify(api_score));
 
@@ -280,7 +280,7 @@ export default {
         const modAcronyms = score.mod_acronyms.length > 0 ? `+${score.mod_acronyms.join('')}` : '';
         let content = `\`${('#' + score_rank.toString()).padStart(4)}\`: **${score.rank.toUpperCase()}** rank `;
         content += `**${score.pp}**pp ${modAcronyms} `;
-        content += `<t:${score_time_set.getTime()/1000}:f> [${score.title} [${score.diff_name}]](https://osu.ppy.sh/b/${score.beatmap_id})`;
+        content += `<t:${score_time_set.getTime() / 1000}:f> [${score.title} [${score.diff_name}]](https://osu.ppy.sh/b/${score.beatmap_id})`;
         content += ` | [__**Score link**__](https://osu.ppy.sh/scores/${score.id})`;
 
         // only add timer calculation if timer value was correctly fetched
@@ -362,9 +362,9 @@ export default {
         break;
       }
     })());
-	},
+  },
 
-	async fetch() {
-		return new Response('', { status: 404 });
-	}
+  async fetch() {
+    return new Response('', { status: 404 });
+  }
 };
