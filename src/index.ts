@@ -253,7 +253,13 @@ export default {
         const url = new URL(env.FARMATHON_TIMER_LINKSHARE);
         url.searchParams.set('nocache', Math.random().toString().slice(2));
 
-        const resp = await fetch(url.toString());
+        const resp = await fetch(url.toString(), {
+          method: 'GET',
+          headers: {
+            'Cache-Control': 'no-cache' // Not sure if strictly necessary when cache-busting query param is used as well
+          }
+        });
+
         timer_value = parseInt(await resp.text());
       } catch (e) {
         console.error(`Failed to fetch timer value: ${e}`);
