@@ -192,19 +192,46 @@ export default {
       }
     };
 
-    let r = await fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/recent?legacy_only=1&mode=osu&limit=50', options);
-    if (!r.ok) {
-      console.error(`Failed to fetch recent scores: ${r.status} ${await r.text()}`);
-      return;
-    }
-    const recent_scores = (await r.json()) as NewUserScore[];
+    const fetch_promises: Promise<Response>[] = [];
+    fetch_promises.push(fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/recent?legacy_only=1&mode=osu&limit=50', options));
+    fetch_promises.push(fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/best?legacy_only=1&mode=osu&limit=100', options));
 
-    r = await fetch('https://osu.ppy.sh/api/v2/users/3171691/scores/best?legacy_only=1&mode=osu&limit=100', options);
-    if (!r.ok) {
-      console.error(`Failed to fetch best scores: ${r.status} ${await r.text()}`);
+    // default timer value to -1, proceed invoking webhook regardless of timer success
+    let timer_value = -1;
+    if (env.FARMATHON_TIMER_LINKSHARE != null) {
+      // add nocache query param with random value to bypass caching
+      const timer_url = new URL(env.FARMATHON_TIMER_LINKSHARE);
+      timer_url.searchParams.set('nocache', Math.random().toString().slice(2));
+
+      // Not sure if strictly necessary when cache-busting query param is used as well
+      fetch_promises.push(fetch(timer_url.toString(), { method: 'GET', headers: { 'Cache-Control': 'no-cache' } }));
+    }
+
+    // perform all network requests in parallel
+    const [recentScoresResponse, bestScoresResponse, timerValueResponse] = await Promise.all(fetch_promises);
+
+    if (!recentScoresResponse.ok) {
+      console.error(`Failed to fetch recent scores: ${recentScoresResponse.status}`); // ${await recentScoresResponse.text()}`);
       return;
     }
-    const best_scores = (await r.json()) as UserBestScore[];
+
+    if (!bestScoresResponse.ok) {
+      console.error(`Failed to fetch best scores: ${bestScoresResponse.status}`); //  ${await bestScoresResponse.text()}`);
+      return;
+    }
+
+    if (!timerValueResponse.ok) {
+      console.warn(`Failed to fetch timer value: ${timerValueResponse.status} ${await timerValueResponse.text()}`);
+    } else {
+      try {
+        timer_value = parseInt(await timerValueResponse.text());
+      } catch (e) {
+        console.error(`Failed to parse timer value: ${e}`);
+      }
+    }
+
+    const recent_scores = (await recentScoresResponse.json()) as NewUserScore[];
+    const best_scores = (await bestScoresResponse.json()) as UserBestScore[];
 
 
     // const top_100_pp = best_scores.reduce((min, score) => {
@@ -242,27 +269,6 @@ export default {
       if (latest_score.ended_at != last_seen_score?.created_at) {
         console.log(`updating last_seen_score to ${latest_score.beatmapset.title}, created_at=${latest_score.ended_at}`);
         await env.LATEST_SCORE.put('last_seen', JSON.stringify(score_from_api(latest_score)));
-      }
-    }
-
-    // get current timer value
-    let timer_value = -1;
-    if (env.FARMATHON_TIMER_LINKSHARE != null) {
-      try{
-        // add nocache query param with random value to bypass caching
-        const url = new URL(env.FARMATHON_TIMER_LINKSHARE);
-        url.searchParams.set('nocache', Math.random().toString().slice(2));
-
-        const resp = await fetch(url.toString(), {
-          method: 'GET',
-          headers: {
-            'Cache-Control': 'no-cache' // Not sure if strictly necessary when cache-busting query param is used as well
-          }
-        });
-
-        timer_value = parseInt(await resp.text());
-      } catch (e) {
-        console.error(`Failed to fetch timer value: ${e}`);
       }
     }
 
