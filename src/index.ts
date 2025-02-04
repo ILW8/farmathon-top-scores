@@ -18,7 +18,7 @@ import {
   Rank,
   ScoreStatistics,
   UserBestScore,
-  UserCompact
+  UserCompact,
 } from 'osu-web.js';
 
 interface Env {
@@ -26,7 +26,7 @@ interface Env {
   OSU_API_V2_CLIENT_SECRET: string;
   DISCORD_WEBHOOK_URL: string;
   FARMATHON_TIMER_LINKSHARE: string;
-  LATEST_SCORE: KVNamespace;  // handles latest score, but also caches access token for osu api v2
+	LATEST_SCORE: KVNamespace;  // handles latest score, but also caches access token for osu api v2
 }
 
 /**
@@ -115,15 +115,15 @@ async function get_osu_v2_token(env: Env, renew: boolean = false) {
   const options = {
     method: 'POST',
     headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded'
+      "Accept": "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({
       client_id: env.OSU_API_V2_CLIENT_ID,
       client_secret: env.OSU_API_V2_CLIENT_SECRET,
       grant_type: 'client_credentials',
       scope: 'public'
-    })
+    }),
   };
 
   const resp = await fetch(token_url, options);
@@ -182,7 +182,7 @@ export default {
       console.warn(`Failed to parse last_seen_score: ${e}, resetting to empty`);
     }
 
-    console.info(`last seen score: ${last_seen_score?.created_at} ${last_seen_score?.title}`);
+    console.info(`last seen score: ${last_seen_score?.created_at} ${last_seen_score?.title}`)
 
     const options = {
       method: 'GET',
@@ -233,35 +233,46 @@ export default {
     const recent_scores = (await recentScoresResponse.json()) as NewUserScore[];
     const best_scores = (await bestScoresResponse.json()) as UserBestScore[];
 
-    const top_100_pp_values = best_scores.map(score => score.pp).sort((a, b) => b - a);
+
+    // const top_100_pp = best_scores.reduce((min, score) => {
+    //   return score.pp < min ? score.pp : min;
+    // }, Infinity);
+
+    const top_100_pp_values = best_scores.map(score => score.pp);
+    top_100_pp_values.sort((a, b) => a - b).reverse();
+
     const top_100_pp = top_100_pp_values[top_100_pp_values.length - 1];
 
     let new_scores: NewUserScore[] = [];
 
-    let last_seen_index = -1;
-    if (last_seen_score?.created_at != null)
-      last_seen_index = recent_scores.findIndex(score => score.ended_at == last_seen_score?.created_at);
+		for (let reverse_index = recent_scores.length - 1; reverse_index >= 0; reverse_index--) {
+      // console.log(`[${reverse_index.toString().padStart(2)}]: ${recent_scores[reverse_index].created_at} ${recent_scores[reverse_index].beatmapset.title}`);
 
-    if (last_seen_index !== 0) {
-      const start_index = last_seen_index === -1 ? recent_scores.length - 1 : last_seen_index;
-
-      for (let i = start_index; i >= 0; i--) {
-        const score = recent_scores[i];
-
-        if (score.pp && score.pp >= top_100_pp)
-          new_scores.push(score);
+      if (recent_scores[reverse_index].ended_at == last_seen_score?.created_at) {
+        // clear new_scores
+        new_scores = [];
+        // console.warn(`vvvv start counting from here vvvv`);
+        continue;
       }
-    }
+
+      // filter to only include top 100 scores
+      if (recent_scores[reverse_index].pp == null || recent_scores[reverse_index].pp < top_100_pp) {
+        // console.log(`skipping score ${reverse_index} with pp ${recent_scores[reverse_index].pp}`);
+        continue;
+      }
+
+      new_scores.push(recent_scores[reverse_index]);
+		}
 
     if (recent_scores.length > 0) {
-      const latest_score = recent_scores[0];
+      const latest_score = recent_scores[0]
       if (latest_score.ended_at != last_seen_score?.created_at) {
         console.log(`updating last_seen_score to ${latest_score.beatmapset.title}, created_at=${latest_score.ended_at}`);
         await env.LATEST_SCORE.put('last_seen', JSON.stringify(score_from_api(latest_score)));
       }
     }
 
-    ctx.waitUntil((async () => {
+		ctx.waitUntil((async () => {
       for (const api_score of new_scores) {
         // console.log(JSON.stringify(api_score));
 
@@ -276,7 +287,7 @@ export default {
         const modAcronyms = score.mod_acronyms.length > 0 ? `+${score.mod_acronyms.join('')}` : '';
         let content = `\`${('#' + score_rank.toString()).padStart(4)}\`: **${score.rank.toUpperCase()}** rank `;
         content += `**${score.pp}**pp ${modAcronyms} `;
-        content += `<t:${score_time_set.getTime() / 1000}:f> [${score.title} [${score.diff_name}]](https://osu.ppy.sh/b/${score.beatmap_id})`;
+        content += `<t:${score_time_set.getTime()/1000}:f> [${score.title} [${score.diff_name}]](https://osu.ppy.sh/b/${score.beatmap_id})`;
         content += ` | [__**Score link**__](https://osu.ppy.sh/scores/${score.id})`;
 
         // only add timer calculation if timer value was correctly fetched
@@ -294,7 +305,7 @@ export default {
             3: [15, 20, 35, 90, 99],
             4: [20, 25, 40, 95, 100]
           };
-          const reduced_timer_values: { [key: number]: number } = {};
+          const reduced_timer_values: {number: number} = {};
           const ranges = [
             { min: 1, max: 1, tier: 4 },
             { min: 2, max: 5, tier: 3 },
@@ -326,13 +337,13 @@ export default {
           }
 
           for (const week_num of Object.keys(timer_reduction_pcts)) {
-            reduced_timer_values[parseInt(week_num)] = Math.round(timer_value * (1 - timer_reduction_pcts[week_num][reduction_tier] / 100));
+            reduced_timer_values[week_num] = Math.round(timer_value * (1 - timer_reduction_pcts[week_num][reduction_tier] / 100));
           }
 
           content += `\n`;
           content += `- Timer at time of score fetch: ${formatSecondsToHMS(timer_value)}\n`;
           for (const key of Object.keys(reduced_timer_values)) {
-            content += ` - Reduction for week **${key}**: ${formatSecondsToHMS(reduced_timer_values[parseInt(key)])} (${timer_reduction_pcts[key][reduction_tier]}%)\n`;
+            content += ` - Reduction for week **${key}**: ${formatSecondsToHMS(reduced_timer_values[key])} (${timer_reduction_pcts[key][reduction_tier]}%)\n`;
           }
         }
 
@@ -358,9 +369,9 @@ export default {
         break;
       }
     })());
-  },
+	},
 
-  async fetch() {
-    return new Response('', { status: 404 });
-  }
+	async fetch() {
+		return new Response('', { status: 404 });
+	}
 };
