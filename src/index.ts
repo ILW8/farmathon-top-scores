@@ -238,23 +238,19 @@ export default {
 
     let new_scores: NewUserScore[] = [];
 
-    for (let reverse_index = recent_scores.length - 1; reverse_index >= 0; reverse_index--) {
-      // console.log(`[${reverse_index.toString().padStart(2)}]: ${recent_scores[reverse_index].created_at} ${recent_scores[reverse_index].beatmapset.title}`);
+    let last_seen_index = -1;
+    if (last_seen_score?.created_at != null)
+      last_seen_index = recent_scores.findIndex(score => score.ended_at == last_seen_score?.created_at);
 
-      if (recent_scores[reverse_index].ended_at == last_seen_score?.created_at) {
-        // clear new_scores
-        new_scores = [];
-        // console.warn(`vvvv start counting from here vvvv`);
-        continue;
+    if (last_seen_index !== 0) {
+      const start_index = last_seen_index === -1 ? recent_scores.length - 1 : last_seen_index;
+
+      for (let i = start_index; i >= 0; i--) {
+        const score = recent_scores[i];
+
+        if (score.pp && score.pp >= top_100_pp)
+          new_scores.push(score);
       }
-
-      // filter to only include top 100 scores
-      if (recent_scores[reverse_index].pp == null || recent_scores[reverse_index].pp < top_100_pp) {
-        // console.log(`skipping score ${reverse_index} with pp ${recent_scores[reverse_index].pp}`);
-        continue;
-      }
-
-      new_scores.push(recent_scores[reverse_index]);
     }
 
     if (recent_scores.length > 0) {
