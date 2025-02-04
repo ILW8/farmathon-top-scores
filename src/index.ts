@@ -233,14 +233,7 @@ export default {
     const recent_scores = (await recentScoresResponse.json()) as NewUserScore[];
     const best_scores = (await bestScoresResponse.json()) as UserBestScore[];
 
-
-    // const top_100_pp = best_scores.reduce((min, score) => {
-    //   return score.pp < min ? score.pp : min;
-    // }, Infinity);
-
-    const top_100_pp_values = best_scores.map(score => score.pp);
-    top_100_pp_values.sort((a, b) => a - b).reverse();
-
+    const top_100_pp_values = best_scores.map(score => score.pp).sort((a, b) => b - a);
     const top_100_pp = top_100_pp_values[top_100_pp_values.length - 1];
 
     let new_scores: NewUserScore[] = [];
@@ -305,7 +298,7 @@ export default {
             3: [15, 20, 35, 90, 99],
             4: [20, 25, 40, 95, 100]
           };
-          const reduced_timer_values: {number: number} = {};
+          const reduced_timer_values: { [key: number]: number } = {};
           const ranges = [
             { min: 1, max: 1, tier: 4 },
             { min: 2, max: 5, tier: 3 },
@@ -337,13 +330,13 @@ export default {
           }
 
           for (const week_num of Object.keys(timer_reduction_pcts)) {
-            reduced_timer_values[week_num] = Math.round(timer_value * (1 - timer_reduction_pcts[week_num][reduction_tier] / 100));
+            reduced_timer_values[parseInt(week_num)] = Math.round(timer_value * (1 - timer_reduction_pcts[week_num][reduction_tier] / 100));
           }
 
           content += `\n`;
           content += `- Timer at time of score fetch: ${formatSecondsToHMS(timer_value)}\n`;
           for (const key of Object.keys(reduced_timer_values)) {
-            content += ` - Reduction for week **${key}**: ${formatSecondsToHMS(reduced_timer_values[key])} (${timer_reduction_pcts[key][reduction_tier]}%)\n`;
+            content += ` - Reduction for week **${key}**: ${formatSecondsToHMS(reduced_timer_values[parseInt(key)])} (${timer_reduction_pcts[key][reduction_tier]}%)\n`;
           }
         }
 
