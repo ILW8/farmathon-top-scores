@@ -18,7 +18,7 @@ import {
   Rank,
   ScoreStatistics,
   UserBestScore,
-  UserCompact,
+  UserCompact
 } from 'osu-web.js';
 
 interface Env {
@@ -165,6 +165,10 @@ function formatSecondsToHMS(seconds: number) {
   return `${fmt_hours}:${fmt_mins}:${fmt_secs}`;
 }
 
+function rank_of_score(top_100_pps: number[], pp: number): number {
+  return top_100_pps.indexOf(pp) + 1;
+}
+
 // noinspection JSUnusedGlobalSymbols
 export default {
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
@@ -258,7 +262,7 @@ export default {
 
       // filter to only include top 100 scores
       // console.log(`[${reverse_index.toString().padStart(2)}] considering score ${reverse_index} with pp ${recent_scores[reverse_index].pp}`);
-      if (recent_scores[reverse_index].pp == null || recent_scores[reverse_index].pp < top_100_pp) {
+      if (recent_scores[reverse_index].pp == null || recent_scores[reverse_index].pp < top_100_pp || rank_of_score(top_100_pp_values, recent_scores[reverse_index].pp) == 0) {
         // console.log(`skipping score ${reverse_index} with pp ${recent_scores[reverse_index].pp}`);
         continue;
       }
@@ -293,7 +297,7 @@ export default {
 
         const score: ScuffedScore = score_from_api(api_score);
         const score_time_set = new Date(score.created_at);
-        let score_rank = top_100_pp_values.indexOf(score.pp) + 1;
+        let score_rank = rank_of_score(top_100_pp_values, score.pp);
 
         // if score is not in top 100 (did not overwrite), then skip the score
         if (score_rank == 0)
