@@ -246,31 +246,46 @@ export default {
     let new_scores: NewUserScore[] = [];
 
 		for (let reverse_index = recent_scores.length - 1; reverse_index >= 0; reverse_index--) {
+      // console.log(`start of loop with index ${reverse_index}`);
       // console.log(`[${reverse_index.toString().padStart(2)}]: ${recent_scores[reverse_index].created_at} ${recent_scores[reverse_index].beatmapset.title}`);
 
       if (recent_scores[reverse_index].ended_at == last_seen_score?.created_at) {
         // clear new_scores
         new_scores = [];
-        // console.warn(`vvvv start counting from here vvvv`);
+        // console.log(`!!!!!!!!!!!!!!!!!!!! vvvv start counting from here vvvv`);
         continue;
       }
 
       // filter to only include top 100 scores
+      // console.log(`[${reverse_index.toString().padStart(2)}] considering score ${reverse_index} with pp ${recent_scores[reverse_index].pp}`);
       if (recent_scores[reverse_index].pp == null || recent_scores[reverse_index].pp < top_100_pp) {
         // console.log(`skipping score ${reverse_index} with pp ${recent_scores[reverse_index].pp}`);
         continue;
       }
 
-      new_scores.push(recent_scores[reverse_index]);
+      const new_score = recent_scores[reverse_index];
+      new_scores.push(new_score);
+      // console.log(`[${reverse_index.toString().padStart(2)}]: adding to new_scores${new_score.ended_at} ${new_score.beatmapset.title} ${new_score.pp}pp`);
 		}
 
     if (recent_scores.length > 0) {
-      const latest_score = recent_scores[0]
+      let latest_score: NewUserScore;
+      if (new_scores.length > 0) {
+        latest_score = new_scores[0];
+      } else {
+        latest_score = recent_scores[0];
+      }
+
       if (latest_score.ended_at != last_seen_score?.created_at) {
         console.log(`updating last_seen_score to ${latest_score.beatmapset.title}, created_at=${latest_score.ended_at}`);
         await env.LATEST_SCORE.put('last_seen', JSON.stringify(score_from_api(latest_score)));
       }
     }
+
+    if (new_scores.length > 0)
+      console.log(`found ${new_scores.length} new scores:\n${new_scores.map(score => `- ${score.ended_at} ${score.beatmapset.title} ${score.pp}pp`).join('\n')}`);
+    else
+      console.log(`no new scores found`);
 
 		ctx.waitUntil((async () => {
       for (const api_score of new_scores) {
@@ -346,6 +361,8 @@ export default {
             content += ` - Reduction for week **${key}**: ${formatSecondsToHMS(reduced_timer_values[key])} (${timer_reduction_pcts[key][reduction_tier]}%)\n`;
           }
         }
+
+        console.log(`sending webhook with contents:\n${content}`);
 
         const options = {
           method: 'POST',
